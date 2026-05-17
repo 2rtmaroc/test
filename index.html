@@ -2,44 +2,57 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Escape Bou6!</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            touch-action: none;
+        }
         body {
-            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             background: #2d5a27;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden;
         }
         #ui {
             position: absolute;
-            top: 10px;
+            top: 5px;
             left: 50%;
             transform: translateX(-50%);
             text-align: center;
             z-index: 10;
             color: #fff;
             text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            width: 90%;
         }
         #ui h1 {
-            font-size: 1.8rem;
-            margin-bottom: 5px;
+            font-size: 1.4rem;
+            margin-bottom: 2px;
             color: #ffe066;
         }
         #ui .info {
-            font-size: 1rem;
+            font-size: 0.8rem;
             opacity: 0.9;
         }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         canvas {
-            border: 3px solid #1a3d15;
-            border-radius: 8px;
-            cursor: crosshair;
+            border: 2px solid #1a3d15;
+            border-radius: 6px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            touch-action: none;
         }
         #overlay {
             position: absolute;
@@ -53,17 +66,19 @@
         }
         #overlay.show { display: flex; }
         #overlay h2 {
-            font-size: 2.5rem;
+            font-size: 2rem;
             color: #fff;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         #overlay .sub {
-            font-size: 1.2rem;
+            font-size: 1rem;
             color: #ccc;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
+            text-align: center;
+            padding: 0 20px;
         }
         #overlay button {
-            padding: 12px 32px;
+            padding: 14px 40px;
             font-size: 1.1rem;
             border: none;
             border-radius: 8px;
@@ -73,15 +88,17 @@
             font-weight: bold;
             transition: transform 0.1s;
         }
-        #overlay button:hover { transform: scale(1.05); }
+        #overlay button:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
     <div id="ui">
         <h1>Escape Bou6!</h1>
-        <div class="info">Level: <span id="levelNum">1</span> | Draw a path to your home (green house). Avoid Bou6!</div>
+        <div class="info">Level <span id="levelNum">1</span> — Draw your path home! Avoid Bou6!</div>
     </div>
-    <canvas id="game"></canvas>
+    <div id="gameContainer">
+        <canvas id="game"></canvas>
+    </div>
     <div id="overlay">
         <h2 id="overlayTitle">CAUGHT!</h2>
         <div class="sub" id="overlaySub">Bou6 got you!</div>
@@ -97,66 +114,45 @@
     const overlayBtn = document.getElementById('overlayBtn');
     const levelNumEl = document.getElementById('levelNum');
 
-    const W = 700, H = 700;
-    const TILE = 35;
-    const COLS = W / TILE;
-    const ROWS = H / TILE;
-    canvas.width = W;
-    canvas.height = H;
+    // Responsive sizing - fit to phone screen
+    const GRID_COLS = 15;
+    const GRID_ROWS = 20;
+    let TILE, W, H, scale;
+
+    function resize() {
+        const maxW = window.innerWidth - 10;
+        const maxH = window.innerHeight - 60;
+        TILE = Math.floor(Math.min(maxW / GRID_COLS, maxH / GRID_ROWS));
+        W = TILE * GRID_COLS;
+        H = TILE * GRID_ROWS;
+        canvas.width = W;
+        canvas.height = H;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        if (!gameOver) draw();
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
 
     let level = 1;
     let grid = [];
     let playerPos = { x: 0, y: 0 };
     let homePos = { x: 0, y: 0 };
-    let bou6Pos = { x: 0, y: 0 };
     let path = [];
     let pathIndex = 0;
     let drawing = false;
     let gameStarted = false;
     let gameOver = false;
     let won = false;
-    let bou6Speed = 2.5;
-    let playerSpeed = 2.5;
-    let bou6Target = null;
+    let bou6Speed = 2.0;
+    let playerSpeed = 2.0;
     let animFrame = null;
     let lastTime = 0;
     let bou6Path = [];
     let bou6PathIndex = 0;
     let playerPixel = { x: 0, y: 0 };
     let bou6Pixel = { x: 0, y: 0 };
-
-    // Levels - 0 = street, 1 = house/wall
-    const levels = [
-        generateLevel(1),
-        generateLevel(2),
-        generateLevel(3),
-        generateLevel(4),
-        generateLevel(5)
-    ];
-
-    function generateLevel(num) {
-        const g = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
-        // Add houses as blocks
-        const houseCount = 8 + num * 3;
-        const rng = seedRandom(num * 777);
-        for (let i = 0; i < houseCount; i++) {
-            const bw = Math.floor(rng() * 3) + 2;
-            const bh = Math.floor(rng() * 3) + 2;
-            const bx = Math.floor(rng() * (COLS - bw - 4)) + 2;
-            const by = Math.floor(rng() * (ROWS - bh - 4)) + 2;
-            for (let y = by; y < by + bh && y < ROWS; y++) {
-                for (let x = bx; x < bx + bw && x < COLS; x++) {
-                    g[y][x] = 1;
-                }
-            }
-        }
-        // Ensure start and end are clear
-        g[ROWS - 2][1] = 0; g[ROWS - 2][2] = 0; g[ROWS - 3][1] = 0;
-        g[1][COLS - 2] = 0; g[1][COLS - 3] = 0; g[2][COLS - 2] = 0;
-        // Ensure bou6 start is clear
-        g[1][1] = 0; g[1][2] = 0; g[2][1] = 0;
-        return g;
-    }
 
     function seedRandom(seed) {
         return function() {
@@ -165,73 +161,150 @@
         };
     }
 
+    // Generate neighborhood: houses as blocks with streets running between them
+    function generateLevel(num) {
+        // Start with all streets (0), then place house blocks with guaranteed street gaps
+        const g = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(0));
+        const rng = seedRandom(num * 1337);
+
+        // Place house blocks in a grid pattern with streets between them
+        // Streets are every few rows/cols, houses fill the blocks between streets
+        const streetFreqX = 3 + Math.floor(rng() * 2); // street every 3-4 cols
+        const streetFreqY = 3 + Math.floor(rng() * 2); // street every 3-4 rows
+
+        for (let y = 0; y < GRID_ROWS; y++) {
+            for (let x = 0; x < GRID_COLS; x++) {
+                // Keep borders as streets
+                if (x === 0 || x === GRID_COLS - 1 || y === 0 || y === GRID_ROWS - 1) continue;
+                // Streets at regular intervals
+                if (x % streetFreqX === 0 || y % streetFreqY === 0) continue;
+                // Fill as house
+                g[y][x] = 1;
+            }
+        }
+
+        // Add some random gaps in houses (alleys/shortcuts) - more in later levels means fewer shortcuts
+        const alleyCount = Math.max(8 - num, 3);
+        for (let i = 0; i < alleyCount; i++) {
+            const ax = Math.floor(rng() * (GRID_COLS - 4)) + 2;
+            const ay = Math.floor(rng() * (GRID_ROWS - 4)) + 2;
+            const horizontal = rng() > 0.5;
+            const len = Math.floor(rng() * 3) + 2;
+            for (let j = 0; j < len; j++) {
+                const nx = horizontal ? ax + j : ax;
+                const ny = horizontal ? ay : ay + j;
+                if (nx > 0 && nx < GRID_COLS - 1 && ny > 0 && ny < GRID_ROWS - 1) {
+                    g[ny][nx] = 0;
+                }
+            }
+        }
+
+        // Add extra house blocks in higher levels for complexity
+        const extraBlocks = num * 2;
+        for (let i = 0; i < extraBlocks; i++) {
+            const bx = Math.floor(rng() * (GRID_COLS - 6)) + 3;
+            const by = Math.floor(rng() * (GRID_ROWS - 6)) + 3;
+            // Only place if it's currently a street and won't block key areas
+            if (by % streetFreqY === 0 && bx % streetFreqX !== 0) {
+                g[by][bx] = 1;
+            }
+        }
+
+        // Clear player start (bottom-left)
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const cy = GRID_ROWS - 2 + dy;
+                const cx = 1 + dx;
+                if (cy >= 0 && cy < GRID_ROWS && cx >= 0 && cx < GRID_COLS) g[cy][cx] = 0;
+            }
+        }
+        // Clear home (top-right)
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const cy = 1 + dy;
+                const cx = GRID_COLS - 2 + dx;
+                if (cy >= 0 && cy < GRID_ROWS && cx >= 0 && cx < GRID_COLS) g[cy][cx] = 0;
+            }
+        }
+        // Clear bou6 start (top-left area but offset)
+        g[2][2] = 0; g[2][3] = 0; g[3][2] = 0;
+
+        return g;
+    }
+
+    const levels = [];
+    for (let i = 1; i <= 5; i++) levels.push(generateLevel(i));
+
     function initLevel() {
         const idx = Math.min(level - 1, levels.length - 1);
         grid = levels[idx].map(row => [...row]);
-        playerPos = { x: 1, y: ROWS - 2 };
-        homePos = { x: COLS - 2, y: 1 };
-        bou6Pos = { x: 1, y: 1 };
+        playerPos = { x: 1, y: GRID_ROWS - 2 };
+        homePos = { x: GRID_COLS - 2, y: 1 };
+        const bou6Start = { x: 2, y: 2 };
         playerPixel = { x: playerPos.x * TILE + TILE / 2, y: playerPos.y * TILE + TILE / 2 };
-        bou6Pixel = { x: bou6Pos.x * TILE + TILE / 2, y: bou6Pos.y * TILE + TILE / 2 };
+        bou6Pixel = { x: bou6Start.x * TILE + TILE / 2, y: bou6Start.y * TILE + TILE / 2 };
         path = [];
         pathIndex = 0;
         drawing = false;
         gameStarted = false;
         gameOver = false;
         won = false;
-        bou6Speed = 2.5 + (level - 1) * 0.25;
-        playerSpeed = 2.5;
+        bou6Speed = 1.8 + (level - 1) * 0.3;
+        playerSpeed = 2.0;
         bou6Path = [];
         bou6PathIndex = 0;
         levelNumEl.textContent = level;
         overlay.classList.remove('show');
+        resize();
         draw();
     }
 
     function draw() {
-        // Background - grass
         ctx.fillStyle = '#4a8c3f';
         ctx.fillRect(0, 0, W, H);
 
-        // Grid
-        for (let y = 0; y < ROWS; y++) {
-            for (let x = 0; x < COLS; x++) {
+        for (let y = 0; y < GRID_ROWS; y++) {
+            for (let x = 0; x < GRID_COLS; x++) {
+                const px = x * TILE;
+                const py = y * TILE;
                 if (grid[y][x] === 1) {
-                    // House
-                    ctx.fillStyle = '#c0392b';
-                    ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
-                    // Roof
-                    ctx.fillStyle = '#922b21';
+                    // House block
+                    ctx.fillStyle = '#b03a2e';
+                    ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2);
+                    // Roof triangle
+                    ctx.fillStyle = '#7b241c';
                     ctx.beginPath();
-                    ctx.moveTo(x * TILE, y * TILE + TILE * 0.4);
-                    ctx.lineTo(x * TILE + TILE / 2, y * TILE);
-                    ctx.lineTo(x * TILE + TILE, y * TILE + TILE * 0.4);
+                    ctx.moveTo(px, py + TILE * 0.35);
+                    ctx.lineTo(px + TILE / 2, py);
+                    ctx.lineTo(px + TILE, py + TILE * 0.35);
                     ctx.fill();
                     // Window
                     ctx.fillStyle = '#f9e79f';
-                    ctx.fillRect(x * TILE + TILE * 0.3, y * TILE + TILE * 0.5, TILE * 0.4, TILE * 0.3);
+                    ctx.fillRect(px + TILE * 0.3, py + TILE * 0.45, TILE * 0.4, TILE * 0.35);
                 } else {
-                    // Street
-                    ctx.fillStyle = '#7d8471';
-                    ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
-                    ctx.strokeStyle = '#6b7360';
-                    ctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
+                    // Street - asphalt look
+                    ctx.fillStyle = '#5d6352';
+                    ctx.fillRect(px, py, TILE, TILE);
+                    // Subtle grid line
+                    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                    ctx.strokeRect(px, py, TILE, TILE);
                 }
             }
         }
 
-        // Home
+        // Home marker
         ctx.fillStyle = '#27ae60';
         ctx.fillRect(homePos.x * TILE + 2, homePos.y * TILE + 2, TILE - 4, TILE - 4);
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px sans-serif';
+        ctx.font = `bold ${Math.max(8, TILE * 0.28)}px sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText('HOME', homePos.x * TILE + TILE / 2, homePos.y * TILE + TILE / 2 + 4);
+        ctx.textBaseline = 'middle';
+        ctx.fillText('HOME', homePos.x * TILE + TILE / 2, homePos.y * TILE + TILE / 2);
 
-        // Path drawn
+        // Drawn path
         if (path.length > 1) {
-            ctx.strokeStyle = 'rgba(52, 152, 219, 0.6)';
-            ctx.lineWidth = 4;
+            ctx.strokeStyle = 'rgba(52, 152, 219, 0.7)';
+            ctx.lineWidth = TILE * 0.2;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             ctx.beginPath();
@@ -245,94 +318,132 @@
 
         // Player
         drawPlayer(playerPixel.x, playerPixel.y);
-
         // Bou6
         drawBou6(bou6Pixel.x, bou6Pixel.y);
 
-        // Start indicator
+        // Instruction
         if (!gameStarted && !gameOver) {
-            ctx.fillStyle = 'rgba(255,255,255,0.8)';
-            ctx.font = '14px sans-serif';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(0, H - TILE * 1.5, W, TILE * 1.5);
+            ctx.fillStyle = '#fff';
+            ctx.font = `${Math.max(11, TILE * 0.4)}px sans-serif`;
             ctx.textAlign = 'center';
-            ctx.fillText('Click & drag to draw your path!', W / 2, H - 20);
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Touch & drag from your character to draw path!', W / 2, H - TILE * 0.75);
         }
     }
 
     function drawPlayer(x, y) {
-        // Body
+        const r = TILE * 0.38;
         ctx.fillStyle = '#3498db';
         ctx.beginPath();
-        ctx.arc(x, y, TILE * 0.35, 0, Math.PI * 2);
+        ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
-        // Face
+        ctx.strokeStyle = '#2980b9';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Eyes
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(x - 4, y - 3, 3, 0, Math.PI * 2);
-        ctx.arc(x + 4, y - 3, 3, 0, Math.PI * 2);
+        ctx.arc(x - r * 0.3, y - r * 0.2, r * 0.22, 0, Math.PI * 2);
+        ctx.arc(x + r * 0.3, y - r * 0.2, r * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(x - r * 0.3, y - r * 0.2, r * 0.1, 0, Math.PI * 2);
+        ctx.arc(x + r * 0.3, y - r * 0.2, r * 0.1, 0, Math.PI * 2);
         ctx.fill();
         // Smile
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(x, y + 2, 5, 0, Math.PI);
+        ctx.arc(x, y + r * 0.15, r * 0.35, 0.1, Math.PI - 0.1);
         ctx.stroke();
     }
 
     function drawBou6(x, y) {
+        const r = TILE * 0.42;
         // Body
         ctx.fillStyle = '#e74c3c';
         ctx.beginPath();
-        ctx.arc(x, y, TILE * 0.4, 0, Math.PI * 2);
+        ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
-        // Hat
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Guard hat
         ctx.fillStyle = '#2c3e50';
-        ctx.fillRect(x - 10, y - 18, 20, 8);
-        ctx.fillRect(x - 6, y - 25, 12, 10);
+        const hatW = r * 1.4;
+        const hatH = r * 0.35;
+        ctx.fillRect(x - hatW / 2, y - r - hatH * 0.5, hatW, hatH);
+        ctx.fillRect(x - hatW * 0.35, y - r - hatH * 1.5, hatW * 0.7, hatH * 1.2);
+        // Badge on hat
+        ctx.fillStyle = '#f1c40f';
+        ctx.beginPath();
+        ctx.arc(x, y - r - hatH * 0.8, r * 0.12, 0, Math.PI * 2);
+        ctx.fill();
         // Angry eyes
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(x - 5, y - 3, 4, 0, Math.PI * 2);
-        ctx.arc(x + 5, y - 3, 4, 0, Math.PI * 2);
+        ctx.arc(x - r * 0.3, y - r * 0.1, r * 0.25, 0, Math.PI * 2);
+        ctx.arc(x + r * 0.3, y - r * 0.1, r * 0.25, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#000';
         ctx.beginPath();
-        ctx.arc(x - 5, y - 3, 2, 0, Math.PI * 2);
-        ctx.arc(x + 5, y - 3, 2, 0, Math.PI * 2);
+        ctx.arc(x - r * 0.3, y - r * 0.1, r * 0.12, 0, Math.PI * 2);
+        ctx.arc(x + r * 0.3, y - r * 0.1, r * 0.12, 0, Math.PI * 2);
         ctx.fill();
         // Angry eyebrows
         ctx.strokeStyle = '#2c3e50';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = r * 0.15;
         ctx.beginPath();
-        ctx.moveTo(x - 9, y - 9);
-        ctx.lineTo(x - 2, y - 7);
-        ctx.moveTo(x + 9, y - 9);
-        ctx.lineTo(x + 2, y - 7);
+        ctx.moveTo(x - r * 0.55, y - r * 0.45);
+        ctx.lineTo(x - r * 0.1, y - r * 0.3);
+        ctx.moveTo(x + r * 0.55, y - r * 0.45);
+        ctx.lineTo(x + r * 0.1, y - r * 0.3);
+        ctx.stroke();
+        // Frown
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y + r * 0.5, r * 0.3, Math.PI + 0.3, -0.3);
         ctx.stroke();
         // Label
         ctx.fillStyle = '#ffe066';
-        ctx.font = 'bold 9px sans-serif';
+        ctx.font = `bold ${Math.max(8, TILE * 0.28)}px sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText('BOU6', x, y + 20);
+        ctx.textBaseline = 'top';
+        ctx.fillText('BOU6', x, y + r + 2);
     }
 
-    // BFS pathfinding for bou6
+    // BFS pathfinding
     function findPath(startTile, endTile) {
-        const visited = Array(ROWS).fill(null).map(() => Array(COLS).fill(false));
-        const queue = [{ x: startTile.x, y: startTile.y, path: [] }];
+        if (startTile.x === endTile.x && startTile.y === endTile.y) return [];
+        const visited = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(false));
+        const prev = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(null));
+        const queue = [startTile];
         visited[startTile.y][startTile.x] = true;
-        const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+        const dirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
 
         while (queue.length > 0) {
             const curr = queue.shift();
             if (curr.x === endTile.x && curr.y === endTile.y) {
-                return curr.path;
+                // Reconstruct
+                const result = [];
+                let c = endTile;
+                while (c && (c.x !== startTile.x || c.y !== startTile.y)) {
+                    result.unshift(c);
+                    c = prev[c.y][c.x];
+                }
+                return result;
             }
             for (const d of dirs) {
                 const nx = curr.x + d.x;
                 const ny = curr.y + d.y;
-                if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && !visited[ny][nx] && grid[ny][nx] === 0) {
+                if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS && !visited[ny][nx] && grid[ny][nx] === 0) {
                     visited[ny][nx] = true;
-                    queue.push({ x: nx, y: ny, path: [...curr.path, { x: nx, y: ny }] });
+                    prev[ny][nx] = curr;
+                    queue.push({x: nx, y: ny});
                 }
             }
         }
@@ -346,7 +457,7 @@
         lastTime = timestamp;
         if (dt > 100) { animFrame = requestAnimationFrame(gameLoop); return; }
 
-        // Move player along path
+        // Move player along drawn path
         if (gameStarted && pathIndex < path.length - 1) {
             const target = path[pathIndex + 1];
             const dx = target.x - playerPixel.x;
@@ -362,13 +473,13 @@
             }
         }
 
-        // Move bou6 toward player using BFS
+        // Move bou6 chasing player
         if (gameStarted) {
             const playerTile = { x: Math.floor(playerPixel.x / TILE), y: Math.floor(playerPixel.y / TILE) };
             const bou6Tile = { x: Math.floor(bou6Pixel.x / TILE), y: Math.floor(bou6Pixel.y / TILE) };
 
-            // Recalculate path every 30 frames
-            if (!bou6Path.length || Math.random() < 0.05) {
+            // Recalculate path periodically
+            if (!bou6Path.length || bou6PathIndex >= bou6Path.length || Math.random() < 0.06) {
                 bou6Path = findPath(bou6Tile, playerTile);
                 bou6PathIndex = 0;
             }
@@ -384,14 +495,6 @@
                     bou6Pixel.x = btx;
                     bou6Pixel.y = bty;
                     bou6PathIndex++;
-                    // Recalculate when reaching a waypoint
-                    if (bou6PathIndex >= bou6Path.length) {
-                        bou6Path = findPath(
-                            { x: Math.floor(bou6Pixel.x / TILE), y: Math.floor(bou6Pixel.y / TILE) },
-                            playerTile
-                        );
-                        bou6PathIndex = 0;
-                    }
                 } else {
                     bou6Pixel.x += (bdx / bdist) * bou6Speed;
                     bou6Pixel.y += (bdy / bdist) * bou6Speed;
@@ -399,24 +502,24 @@
             }
         }
 
-        // Check collision
+        // Collision check
         const cdx = playerPixel.x - bou6Pixel.x;
         const cdy = playerPixel.y - bou6Pixel.y;
-        if (gameStarted && Math.sqrt(cdx * cdx + cdy * cdy) < TILE * 0.6) {
+        if (gameStarted && Math.sqrt(cdx * cdx + cdy * cdy) < TILE * 0.55) {
             gameOver = true;
-            showOverlay('CAUGHT!', 'Bou6 got you! Try again.', 'Retry');
+            showOverlay('CAUGHT!', 'Bou6 got you! Try a different path.', 'Retry');
         }
 
-        // Check win
+        // Win check
         const hdx = playerPixel.x - (homePos.x * TILE + TILE / 2);
         const hdy = playerPixel.y - (homePos.y * TILE + TILE / 2);
         if (gameStarted && Math.sqrt(hdx * hdx + hdy * hdy) < TILE * 0.6) {
             gameOver = true;
             won = true;
             if (level >= 5) {
-                showOverlay('YOU WIN!', 'You escaped all levels!', 'Play Again');
+                showOverlay('YOU WIN!', 'You escaped all 5 levels! Bou6 is defeated!', 'Play Again');
             } else {
-                showOverlay('SAFE!', 'You made it home! Next level...', 'Next Level');
+                showOverlay('SAFE!', `Level ${level} complete! Bou6 gets faster...`, 'Next Level');
             }
         }
 
@@ -435,7 +538,7 @@
         if (won) {
             if (level >= 5) {
                 level = 1;
-                levels.forEach((_, i) => { levels[i] = generateLevel(i + 1); });
+                for (let i = 0; i < 5; i++) levels[i] = generateLevel(i + 1);
             } else {
                 level++;
             }
@@ -443,66 +546,68 @@
         initLevel();
     });
 
-    // Drawing path
-    canvas.addEventListener('mousedown', (e) => {
-        if (gameOver || gameStarted) return;
+    // Input handling - works for both mouse and touch
+    function getCanvasPos(e) {
         const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+        };
+    }
+
+    function onStart(e) {
+        e.preventDefault();
+        if (gameOver || gameStarted) return;
+        const pos = getCanvasPos(e);
         // Must start near player
-        const dx = mx - playerPixel.x;
-        const dy = my - playerPixel.y;
-        if (Math.sqrt(dx * dx + dy * dy) < TILE * 1.5) {
+        const dx = pos.x - playerPixel.x;
+        const dy = pos.y - playerPixel.y;
+        if (Math.sqrt(dx * dx + dy * dy) < TILE * 2) {
             drawing = true;
             path = [{ x: playerPixel.x, y: playerPixel.y }];
         }
-    });
+    }
 
-    canvas.addEventListener('mousemove', (e) => {
+    function onMove(e) {
+        e.preventDefault();
         if (!drawing) return;
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        // Check if on street
-        const tx = Math.floor(mx / TILE);
-        const ty = Math.floor(my / TILE);
-        if (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS && grid[ty][tx] === 0) {
+        const pos = getCanvasPos(e);
+        // Check if position is on a street tile
+        const tx = Math.floor(pos.x / TILE);
+        const ty = Math.floor(pos.y / TILE);
+        if (tx >= 0 && tx < GRID_COLS && ty >= 0 && ty < GRID_ROWS && grid[ty][tx] === 0) {
             const last = path[path.length - 1];
-            const dx = mx - last.x;
-            const dy = my - last.y;
-            if (Math.sqrt(dx * dx + dy * dy) > 5) {
-                path.push({ x: mx, y: my });
+            const dx = pos.x - last.x;
+            const dy = pos.y - last.y;
+            if (Math.sqrt(dx * dx + dy * dy) > TILE * 0.3) {
+                path.push({ x: pos.x, y: pos.y });
             }
         }
         draw();
-    });
+    }
 
-    canvas.addEventListener('mouseup', () => {
+    function onEnd(e) {
+        e.preventDefault();
         if (!drawing) return;
         drawing = false;
-        if (path.length > 5) {
+        if (path.length > 3) {
             gameStarted = true;
             pathIndex = 0;
             lastTime = performance.now();
             animFrame = requestAnimationFrame(gameLoop);
         }
-    });
+    }
 
-    // Touch support
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY }));
-    });
-    canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY }));
-    });
-    canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        canvas.dispatchEvent(new MouseEvent('mouseup'));
-    });
+    // Touch events
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+    // Mouse events
+    canvas.addEventListener('mousedown', onStart);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseup', onEnd);
 
     initLevel();
     </script>
