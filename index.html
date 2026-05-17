@@ -123,17 +123,22 @@
         const maxW = window.innerWidth - 10;
         const maxH = window.innerHeight - 60;
         TILE = Math.floor(Math.min(maxW / GRID_COLS, maxH / GRID_ROWS));
+        if (TILE < 10) TILE = 10;
         W = TILE * GRID_COLS;
         H = TILE * GRID_ROWS;
         canvas.width = W;
         canvas.height = H;
         canvas.style.width = W + 'px';
         canvas.style.height = H + 'px';
-        if (!gameOver) draw();
+        // Recalculate pixel positions if game is initialized
+        if (grid.length > 0) {
+            playerPixel = { x: playerPos.x * TILE + TILE / 2, y: playerPos.y * TILE + TILE / 2 };
+            bou6Pixel = { x: Math.floor(bou6Pixel.x / (W / GRID_COLS)) * TILE + TILE / 2, y: Math.floor(bou6Pixel.y / (H / GRID_ROWS)) * TILE + TILE / 2 };
+            draw();
+        }
     }
 
     window.addEventListener('resize', resize);
-    resize();
 
     let level = 1;
     let grid = [];
@@ -236,6 +241,18 @@
     for (let i = 1; i <= 5; i++) levels.push(generateLevel(i));
 
     function initLevel() {
+        // Set canvas size first
+        const maxW = window.innerWidth - 10;
+        const maxH = window.innerHeight - 60;
+        TILE = Math.floor(Math.min(maxW / GRID_COLS, maxH / GRID_ROWS));
+        if (TILE < 10) TILE = 10;
+        W = TILE * GRID_COLS;
+        H = TILE * GRID_ROWS;
+        canvas.width = W;
+        canvas.height = H;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+
         const idx = Math.min(level - 1, levels.length - 1);
         grid = levels[idx].map(row => [...row]);
         playerPos = { x: 1, y: GRID_ROWS - 2 };
@@ -255,7 +272,6 @@
         bou6PathIndex = 0;
         levelNumEl.textContent = level;
         overlay.classList.remove('show');
-        resize();
         draw();
     }
 
