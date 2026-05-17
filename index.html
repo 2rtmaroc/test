@@ -3,195 +3,508 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XO Game</title>
+    <title>Escape Bou6!</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: #1a1a2e;
+            background: #2d5a27;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #eee;
+            overflow: hidden;
         }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            letter-spacing: 4px;
-            background: linear-gradient(135deg, #e94560, #0f3460);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
+            color: #fff;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
         }
-
-        .status {
-            font-size: 1.3rem;
-            margin-bottom: 20px;
-            height: 40px;
-            display: flex;
-            align-items: center;
+        #ui h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+            color: #ffe066;
         }
-
-        .board {
-            display: grid;
-            grid-template-columns: repeat(3, 120px);
-            grid-template-rows: repeat(3, 120px);
-            gap: 6px;
+        #ui .info {
+            font-size: 1rem;
+            opacity: 0.9;
         }
-
-        .cell {
-            width: 120px;
-            height: 120px;
-            background: #16213e;
-            border: 2px solid #0f3460;
-            border-radius: 12px;
-            display: flex;
+        canvas {
+            border: 3px solid #1a3d15;
+            border-radius: 8px;
+            cursor: crosshair;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: none;
             align-items: center;
             justify-content: center;
-            font-size: 3rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: background 0.2s, transform 0.15s;
-            user-select: none;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            flex-direction: column;
         }
-
-        .cell:hover {
-            background: #1a1a40;
-            transform: scale(1.05);
+        #overlay.show { display: flex; }
+        #overlay h2 {
+            font-size: 2.5rem;
+            color: #fff;
+            margin-bottom: 15px;
         }
-
-        .cell.x {
-            color: #e94560;
-            text-shadow: 0 0 12px rgba(233, 69, 96, 0.5);
+        #overlay .sub {
+            font-size: 1.2rem;
+            color: #ccc;
+            margin-bottom: 20px;
         }
-
-        .cell.o {
-            color: #0f9bea;
-            text-shadow: 0 0 12px rgba(15, 155, 234, 0.5);
-        }
-
-        .cell.win {
-            background: #0f3460;
-            animation: pulse 0.6s ease-in-out infinite alternate;
-        }
-
-        @keyframes pulse {
-            to { transform: scale(1.08); }
-        }
-
-        .restart {
-            margin-top: 25px;
-            padding: 12px 36px;
+        #overlay button {
+            padding: 12px 32px;
             font-size: 1.1rem;
             border: none;
             border-radius: 8px;
-            background: linear-gradient(135deg, #e94560, #0f3460);
-            color: #fff;
             cursor: pointer;
-            letter-spacing: 1px;
-            transition: opacity 0.2s;
+            background: #ffe066;
+            color: #333;
+            font-weight: bold;
+            transition: transform 0.1s;
         }
-
-        .restart:hover {
-            opacity: 0.85;
-        }
-
-        .scoreboard {
-            display: flex;
-            gap: 40px;
-            margin-bottom: 20px;
-            font-size: 1.1rem;
-        }
-
-        .scoreboard span {
-            padding: 6px 18px;
-            border-radius: 8px;
-            background: #16213e;
-        }
-
-        .score-x { color: #e94560; }
-        .score-o { color: #0f9bea; }
+        #overlay button:hover { transform: scale(1.05); }
     </style>
 </head>
 <body>
-    <h1>XO GAME</h1>
-    <div class="scoreboard">
-        <span class="score-x">X: <b id="sx">0</b></span>
-        <span>Draw: <b id="sd">0</b></span>
-        <span class="score-o">O: <b id="so">0</b></span>
+    <div id="ui">
+        <h1>Escape Bou6!</h1>
+        <div class="info">Level: <span id="levelNum">1</span> | Draw a path to your home (green house). Avoid Bou6!</div>
     </div>
-    <div class="status" id="status">Turn: X</div>
-    <div class="board" id="board"></div>
-    <button class="restart" onclick="init()">Restart</button>
+    <canvas id="game"></canvas>
+    <div id="overlay">
+        <h2 id="overlayTitle">CAUGHT!</h2>
+        <div class="sub" id="overlaySub">Bou6 got you!</div>
+        <button id="overlayBtn">Try Again</button>
+    </div>
 
     <script>
-        const board = document.getElementById('board');
-        const status = document.getElementById('status');
-        let cells, current, gameOver, scores = { X: 0, O: 0, D: 0 };
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlaySub = document.getElementById('overlaySub');
+    const overlayBtn = document.getElementById('overlayBtn');
+    const levelNumEl = document.getElementById('levelNum');
 
-        const wins = [
-            [0,1,2],[3,4,5],[6,7,8],
-            [0,3,6],[1,4,7],[2,5,8],
-            [0,4,8],[2,4,6]
-        ];
+    const W = 700, H = 700;
+    const TILE = 35;
+    const COLS = W / TILE;
+    const ROWS = H / TILE;
+    canvas.width = W;
+    canvas.height = H;
 
-        function init() {
-            board.innerHTML = '';
-            cells = Array(9).fill('');
-            current = 'X';
-            gameOver = false;
-            status.textContent = 'Turn: X';
-            for (let i = 0; i < 9; i++) {
-                const div = document.createElement('div');
-                div.className = 'cell';
-                div.addEventListener('click', () => play(i));
-                board.appendChild(div);
+    let level = 1;
+    let grid = [];
+    let playerPos = { x: 0, y: 0 };
+    let homePos = { x: 0, y: 0 };
+    let bou6Pos = { x: 0, y: 0 };
+    let path = [];
+    let pathIndex = 0;
+    let drawing = false;
+    let gameStarted = false;
+    let gameOver = false;
+    let won = false;
+    let bou6Speed = 2.5;
+    let playerSpeed = 2.5;
+    let bou6Target = null;
+    let animFrame = null;
+    let lastTime = 0;
+    let bou6Path = [];
+    let bou6PathIndex = 0;
+    let playerPixel = { x: 0, y: 0 };
+    let bou6Pixel = { x: 0, y: 0 };
+
+    // Levels - 0 = street, 1 = house/wall
+    const levels = [
+        generateLevel(1),
+        generateLevel(2),
+        generateLevel(3),
+        generateLevel(4),
+        generateLevel(5)
+    ];
+
+    function generateLevel(num) {
+        const g = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
+        // Add houses as blocks
+        const houseCount = 8 + num * 3;
+        const rng = seedRandom(num * 777);
+        for (let i = 0; i < houseCount; i++) {
+            const bw = Math.floor(rng() * 3) + 2;
+            const bh = Math.floor(rng() * 3) + 2;
+            const bx = Math.floor(rng() * (COLS - bw - 4)) + 2;
+            const by = Math.floor(rng() * (ROWS - bh - 4)) + 2;
+            for (let y = by; y < by + bh && y < ROWS; y++) {
+                for (let x = bx; x < bx + bw && x < COLS; x++) {
+                    g[y][x] = 1;
+                }
+            }
+        }
+        // Ensure start and end are clear
+        g[ROWS - 2][1] = 0; g[ROWS - 2][2] = 0; g[ROWS - 3][1] = 0;
+        g[1][COLS - 2] = 0; g[1][COLS - 3] = 0; g[2][COLS - 2] = 0;
+        // Ensure bou6 start is clear
+        g[1][1] = 0; g[1][2] = 0; g[2][1] = 0;
+        return g;
+    }
+
+    function seedRandom(seed) {
+        return function() {
+            seed = (seed * 16807 + 0) % 2147483647;
+            return (seed - 1) / 2147483646;
+        };
+    }
+
+    function initLevel() {
+        const idx = Math.min(level - 1, levels.length - 1);
+        grid = levels[idx].map(row => [...row]);
+        playerPos = { x: 1, y: ROWS - 2 };
+        homePos = { x: COLS - 2, y: 1 };
+        bou6Pos = { x: 1, y: 1 };
+        playerPixel = { x: playerPos.x * TILE + TILE / 2, y: playerPos.y * TILE + TILE / 2 };
+        bou6Pixel = { x: bou6Pos.x * TILE + TILE / 2, y: bou6Pos.y * TILE + TILE / 2 };
+        path = [];
+        pathIndex = 0;
+        drawing = false;
+        gameStarted = false;
+        gameOver = false;
+        won = false;
+        bou6Speed = 2.5 + (level - 1) * 0.25;
+        playerSpeed = 2.5;
+        bou6Path = [];
+        bou6PathIndex = 0;
+        levelNumEl.textContent = level;
+        overlay.classList.remove('show');
+        draw();
+    }
+
+    function draw() {
+        // Background - grass
+        ctx.fillStyle = '#4a8c3f';
+        ctx.fillRect(0, 0, W, H);
+
+        // Grid
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                if (grid[y][x] === 1) {
+                    // House
+                    ctx.fillStyle = '#c0392b';
+                    ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
+                    // Roof
+                    ctx.fillStyle = '#922b21';
+                    ctx.beginPath();
+                    ctx.moveTo(x * TILE, y * TILE + TILE * 0.4);
+                    ctx.lineTo(x * TILE + TILE / 2, y * TILE);
+                    ctx.lineTo(x * TILE + TILE, y * TILE + TILE * 0.4);
+                    ctx.fill();
+                    // Window
+                    ctx.fillStyle = '#f9e79f';
+                    ctx.fillRect(x * TILE + TILE * 0.3, y * TILE + TILE * 0.5, TILE * 0.4, TILE * 0.3);
+                } else {
+                    // Street
+                    ctx.fillStyle = '#7d8471';
+                    ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+                    ctx.strokeStyle = '#6b7360';
+                    ctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
+                }
             }
         }
 
-        function play(i) {
-            if (cells[i] || gameOver) return;
-            cells[i] = current;
-            const el = board.children[i];
-            el.textContent = current;
-            el.classList.add(current.toLowerCase());
+        // Home
+        ctx.fillStyle = '#27ae60';
+        ctx.fillRect(homePos.x * TILE + 2, homePos.y * TILE + 2, TILE - 4, TILE - 4);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('HOME', homePos.x * TILE + TILE / 2, homePos.y * TILE + TILE / 2 + 4);
 
-            const winCombo = wins.find(w => w.every(j => cells[j] === current));
-            if (winCombo) {
-                gameOver = true;
-                status.textContent = current + ' Wins!';
-                winCombo.forEach(j => board.children[j].classList.add('win'));
-                scores[current]++;
-                updateScores();
-                return;
+        // Path drawn
+        if (path.length > 1) {
+            ctx.strokeStyle = 'rgba(52, 152, 219, 0.6)';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i].x, path[i].y);
             }
-
-            if (cells.every(c => c)) {
-                gameOver = true;
-                status.textContent = "It's a Draw!";
-                scores.D++;
-                updateScores();
-                return;
-            }
-
-            current = current === 'X' ? 'O' : 'X';
-            status.textContent = 'Turn: ' + current;
+            ctx.stroke();
+            ctx.lineWidth = 1;
         }
 
-        function updateScores() {
-            document.getElementById('sx').textContent = scores.X;
-            document.getElementById('so').textContent = scores.O;
-            document.getElementById('sd').textContent = scores.D;
+        // Player
+        drawPlayer(playerPixel.x, playerPixel.y);
+
+        // Bou6
+        drawBou6(bou6Pixel.x, bou6Pixel.y);
+
+        // Start indicator
+        if (!gameStarted && !gameOver) {
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Click & drag to draw your path!', W / 2, H - 20);
+        }
+    }
+
+    function drawPlayer(x, y) {
+        // Body
+        ctx.fillStyle = '#3498db';
+        ctx.beginPath();
+        ctx.arc(x, y, TILE * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        // Face
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x - 4, y - 3, 3, 0, Math.PI * 2);
+        ctx.arc(x + 4, y - 3, 3, 0, Math.PI * 2);
+        ctx.fill();
+        // Smile
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y + 2, 5, 0, Math.PI);
+        ctx.stroke();
+    }
+
+    function drawBou6(x, y) {
+        // Body
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(x, y, TILE * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        // Hat
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(x - 10, y - 18, 20, 8);
+        ctx.fillRect(x - 6, y - 25, 12, 10);
+        // Angry eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x - 5, y - 3, 4, 0, Math.PI * 2);
+        ctx.arc(x + 5, y - 3, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(x - 5, y - 3, 2, 0, Math.PI * 2);
+        ctx.arc(x + 5, y - 3, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Angry eyebrows
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x - 9, y - 9);
+        ctx.lineTo(x - 2, y - 7);
+        ctx.moveTo(x + 9, y - 9);
+        ctx.lineTo(x + 2, y - 7);
+        ctx.stroke();
+        // Label
+        ctx.fillStyle = '#ffe066';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('BOU6', x, y + 20);
+    }
+
+    // BFS pathfinding for bou6
+    function findPath(startTile, endTile) {
+        const visited = Array(ROWS).fill(null).map(() => Array(COLS).fill(false));
+        const queue = [{ x: startTile.x, y: startTile.y, path: [] }];
+        visited[startTile.y][startTile.x] = true;
+        const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            if (curr.x === endTile.x && curr.y === endTile.y) {
+                return curr.path;
+            }
+            for (const d of dirs) {
+                const nx = curr.x + d.x;
+                const ny = curr.y + d.y;
+                if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && !visited[ny][nx] && grid[ny][nx] === 0) {
+                    visited[ny][nx] = true;
+                    queue.push({ x: nx, y: ny, path: [...curr.path, { x: nx, y: ny }] });
+                }
+            }
+        }
+        return [];
+    }
+
+    // Game loop
+    function gameLoop(timestamp) {
+        if (gameOver) return;
+        const dt = timestamp - lastTime;
+        lastTime = timestamp;
+        if (dt > 100) { animFrame = requestAnimationFrame(gameLoop); return; }
+
+        // Move player along path
+        if (gameStarted && pathIndex < path.length - 1) {
+            const target = path[pathIndex + 1];
+            const dx = target.x - playerPixel.x;
+            const dy = target.y - playerPixel.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < playerSpeed) {
+                playerPixel.x = target.x;
+                playerPixel.y = target.y;
+                pathIndex++;
+            } else {
+                playerPixel.x += (dx / dist) * playerSpeed;
+                playerPixel.y += (dy / dist) * playerSpeed;
+            }
         }
 
-        init();
+        // Move bou6 toward player using BFS
+        if (gameStarted) {
+            const playerTile = { x: Math.floor(playerPixel.x / TILE), y: Math.floor(playerPixel.y / TILE) };
+            const bou6Tile = { x: Math.floor(bou6Pixel.x / TILE), y: Math.floor(bou6Pixel.y / TILE) };
+
+            // Recalculate path every 30 frames
+            if (!bou6Path.length || Math.random() < 0.05) {
+                bou6Path = findPath(bou6Tile, playerTile);
+                bou6PathIndex = 0;
+            }
+
+            if (bou6Path.length > 0 && bou6PathIndex < bou6Path.length) {
+                const bTarget = bou6Path[bou6PathIndex];
+                const btx = bTarget.x * TILE + TILE / 2;
+                const bty = bTarget.y * TILE + TILE / 2;
+                const bdx = btx - bou6Pixel.x;
+                const bdy = bty - bou6Pixel.y;
+                const bdist = Math.sqrt(bdx * bdx + bdy * bdy);
+                if (bdist < bou6Speed) {
+                    bou6Pixel.x = btx;
+                    bou6Pixel.y = bty;
+                    bou6PathIndex++;
+                    // Recalculate when reaching a waypoint
+                    if (bou6PathIndex >= bou6Path.length) {
+                        bou6Path = findPath(
+                            { x: Math.floor(bou6Pixel.x / TILE), y: Math.floor(bou6Pixel.y / TILE) },
+                            playerTile
+                        );
+                        bou6PathIndex = 0;
+                    }
+                } else {
+                    bou6Pixel.x += (bdx / bdist) * bou6Speed;
+                    bou6Pixel.y += (bdy / bdist) * bou6Speed;
+                }
+            }
+        }
+
+        // Check collision
+        const cdx = playerPixel.x - bou6Pixel.x;
+        const cdy = playerPixel.y - bou6Pixel.y;
+        if (gameStarted && Math.sqrt(cdx * cdx + cdy * cdy) < TILE * 0.6) {
+            gameOver = true;
+            showOverlay('CAUGHT!', 'Bou6 got you! Try again.', 'Retry');
+        }
+
+        // Check win
+        const hdx = playerPixel.x - (homePos.x * TILE + TILE / 2);
+        const hdy = playerPixel.y - (homePos.y * TILE + TILE / 2);
+        if (gameStarted && Math.sqrt(hdx * hdx + hdy * hdy) < TILE * 0.6) {
+            gameOver = true;
+            won = true;
+            if (level >= 5) {
+                showOverlay('YOU WIN!', 'You escaped all levels!', 'Play Again');
+            } else {
+                showOverlay('SAFE!', 'You made it home! Next level...', 'Next Level');
+            }
+        }
+
+        draw();
+        animFrame = requestAnimationFrame(gameLoop);
+    }
+
+    function showOverlay(title, sub, btnText) {
+        overlayTitle.textContent = title;
+        overlaySub.textContent = sub;
+        overlayBtn.textContent = btnText;
+        overlay.classList.add('show');
+    }
+
+    overlayBtn.addEventListener('click', () => {
+        if (won) {
+            if (level >= 5) {
+                level = 1;
+                levels.forEach((_, i) => { levels[i] = generateLevel(i + 1); });
+            } else {
+                level++;
+            }
+        }
+        initLevel();
+    });
+
+    // Drawing path
+    canvas.addEventListener('mousedown', (e) => {
+        if (gameOver || gameStarted) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        // Must start near player
+        const dx = mx - playerPixel.x;
+        const dy = my - playerPixel.y;
+        if (Math.sqrt(dx * dx + dy * dy) < TILE * 1.5) {
+            drawing = true;
+            path = [{ x: playerPixel.x, y: playerPixel.y }];
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!drawing) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        // Check if on street
+        const tx = Math.floor(mx / TILE);
+        const ty = Math.floor(my / TILE);
+        if (tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS && grid[ty][tx] === 0) {
+            const last = path[path.length - 1];
+            const dx = mx - last.x;
+            const dy = my - last.y;
+            if (Math.sqrt(dx * dx + dy * dy) > 5) {
+                path.push({ x: mx, y: my });
+            }
+        }
+        draw();
+    });
+
+    canvas.addEventListener('mouseup', () => {
+        if (!drawing) return;
+        drawing = false;
+        if (path.length > 5) {
+            gameStarted = true;
+            pathIndex = 0;
+            lastTime = performance.now();
+            animFrame = requestAnimationFrame(gameLoop);
+        }
+    });
+
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY }));
+    });
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY }));
+    });
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        canvas.dispatchEvent(new MouseEvent('mouseup'));
+    });
+
+    initLevel();
     </script>
 </body>
 </html>
